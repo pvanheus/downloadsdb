@@ -4,10 +4,12 @@ import sys
 import os
 import hashlib
 import os.path
+from operator import attrgetter
 import click
 from downloadsdb import db
 import model
 from sqlalchemy.orm.exc import NoResultFound
+import asciitree
 
 def add_item(db, path, collection, name=None, compute_md5=False) -> None:
     size = os.stat(path).st_size
@@ -18,22 +20,28 @@ def add_item(db, path, collection, name=None, compute_md5=False) -> None:
     item = model.Item(path=os.path.basename(path), size=size, md5sum=md5sum, collection=collection)
     db.session.add(item)
 
-def add_collection(db, path, parent, name=None, compute_md5=False) -> None:
-    if parent is None:
-        parent = find_root(db)
-    collection = model.Collection(os.path.basename(path), parent=parent)
-    for _, subdirs, files in os.walk(path):
+def add_collection(db, path, name=None, compute_md5=False) -> None:
+    collection_by_path = { path: model.Collection(path='/', parent=None)}
+    for dirname, subdirs, files in os.walk(path):
+        if 'Coursera' in dirname or '/.' in dirname:
+            continue
+        collection = collection_by_path.get(dirname, model.Collection(path=os.path.basename(dirname)))
         for filename in files:
-            add_item(db, filename, collection, compute_md5=compute_md5)
+            if filename.startswith('.'):
+                continue
+            add_item(db, os.path.join(dirname, filename), collection, compute_md5=compute_md5)
         for subdirname in subdirs:
-            add_collection(db, subdirname, collection, compute_md5=compute_md5)
+            if subdirname.startswith('.'):
+                continue
+            child_collection = model.Collection(path=subdirname)
+            collection.children.append(child_collection)
+            collection_by_path[os.path.join(dirname, subdirname)] = child_collection
 
 def find_root(db) -> model.Collection:
     try:
-        collection = model.Collection.query(path='/').one()
+        collection = model.Collection.query.filter_by(path='/').one()
     except NoResultFound as e:
-        print("DB error: no top level collection found.", file=sys.stderr)
-        raise e
+        return None
     else:
         return collection
 
@@ -50,10 +58,26 @@ def scan(path, collection_name=None, compute_md5=False) -> None:
         return False
     elif os.path.isfile(path):
         root_collection = find_root(db)
-        add_item(db, collection, compute_md5=compute_md5)
+        add_item(db, root_collection, compute_md5=compute_md5)
     elif os.path.isdir(path):
-        add_collection(db, os.path.basename(path), None, compute_md5=compute_md5)
+        add_collection(db, path, compute_md5=compute_md5)
     db.session.commit()
+
+@cli.command()
+def initdb():
+    db.drop_all()
+    db.session.commit()
+    db.create_all()
+    print("created DB at {}.".format(db.app.config['SQLALCHEMY_DATABASE_URI']))
+
+@cli.command()
+def drawtree():
+    root = find_root(db)
+    if root is  None:
+        print("No root for the tree, cannot draw it.")
+    else:
+        tree = asciitree.draw_tree(root)
+        print(tree)
 
 if __name__ == '__main__':
     cli()

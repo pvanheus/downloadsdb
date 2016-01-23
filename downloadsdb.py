@@ -3,7 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from os.path import dirname
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URL'] = 'sqlite:///' + dirname(__file__) + '/downloadsdb.sqlite3'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + dirname(__file__) + '/downloadsdb.sqlite3'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
