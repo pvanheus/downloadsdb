@@ -7,6 +7,7 @@ import os.path
 import click
 from downloadsdb import db
 import model
+from sqlalchemy.orm.exc import NoResultFound
 
 def add_item(db, path, collection, name=None, compute_md5=False) -> None:
     size = os.stat(path).st_size
@@ -30,7 +31,7 @@ def add_collection(db, path, parent, name=None, compute_md5=False) -> None:
 def find_root(db) -> model.Collection:
     try:
         collection = model.Collection.query(path='/').one()
-    except db.exc.NoResultFound as e:
+    except NoResultFound as e:
         print("DB error: no top level collection found.", file=sys.stderr)
         raise e
     else:
